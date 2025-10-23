@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="820" viewBox="0 0 1200 820" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style><![CDATA[
+      .lane { fill:#f7f7f7; stroke:#cfcfcf; }
+      .lane-title { font-family:Arial, Helvetica, sans-serif; font-size:16px; font-weight:bold; fill:#333;}
+      .box { fill:#ffffff; stroke:#333333; stroke-width:1.5; rx:6; ry:6; }
+      .box-alt { fill:#f0f4ff; stroke:#314e89; stroke-width:1.5; rx:6; ry:6; }
+      .box-db { fill:#fff9e6; stroke:#b38b00; stroke-width:1.5; rx:6; ry:6; }
+      .box-llm { fill:#e9fff2; stroke:#198754; stroke-width:1.5; rx:6; ry:6; }
+      .note { font-family:Arial, Helvetica, sans-serif; font-size:13px; fill:#333; }
+      .title { font-family:Arial, Helvetica, sans-serif; font-size:20px; font-weight:bold; fill:#111; }
+      .arrow { stroke:#555; stroke-width:1.5; marker-end:url(#arrowhead); fill:none; }
+      .dashed { stroke-dasharray:6 5; }
+      .caption { font-family:Arial, Helvetica, sans-serif; font-size:12px; fill:#444; }
+    ]]></style>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="600" y="32" text-anchor="middle" class="title">オフライン文書RAGデスクトップアプリ 業務フロー（SVG）</text>
+  <text x="600" y="52" text-anchor="middle" class="caption">完全オフライン / 文書アップロード・タグ付け・ggufモデル・検索→生成→表示</text>
+
+  <!-- Swimlanes -->
+  <rect class="lane" x="20"  y="70" width="270" height="720" />
+  <rect class="lane" x="310" y="70" width="360" height="720" />
+  <rect class="lane" x="690" y="70" width="230" height="720" />
+  <rect class="lane" x="940" y="70" width="240" height="720" />
+
+  <text class="lane-title" x="155" y="95" text-anchor="middle">ユーザー</text>
+  <text class="lane-title" x="490" y="95" text-anchor="middle">デスクトップアプリ（UI/制御）</text>
+  <text class="lane-title" x="805" y="95" text-anchor="middle">ローカルDB／インデックス</text>
+  <text class="lane-title" x="1060" y="95" text-anchor="middle">LLMランタイム（gguf）</text>
+
+  <!-- Start -->
+  <rect class="box" x="80" y="120" width="180" height="40" rx="20" ry="20"/>
+  <text class="note" x="170" y="145" text-anchor="middle">開始</text>
+
+  <!-- Upload Documents -->
+  <rect class="box" x="60" y="200" width="220" height="60"/>
+  <text class="note" x="170" y="222" text-anchor="middle">文書アップロード</text>
+  <text class="caption" x="170" y="242" text-anchor="middle">PDF / Word / TXT / CSV</text>
+
+  <rect class="box-alt" x="340" y="200" width="300" height="60"/>
+  <text class="note" x="490" y="222" text-anchor="middle">テキスト抽出・分割</text>
+  <text class="caption" x="490" y="242" text-anchor="middle">OCR/パーサ → チャンク化</text>
+
+  <rect class="box-llm" x="940" y="200" width="220" height="60"/>
+  <text class="note" x="1050" y="222" text-anchor="middle">要約生成</text>
+  <text class="caption" x="1050" y="242" text-anchor="middle">ローカル推論</text>
+
+  <rect class="box-db" x="720" y="280" width="180" height="60"/>
+  <text class="note" x="810" y="302" text-anchor="middle">インデックス登録</text>
+  <text class="caption" x="810" y="322" text-anchor="middle">ベクトルDB / メタデータ</text>
+
+  <!-- Tagging -->
+  <rect class="box" x="60" y="300" width="220" height="60"/>
+  <text class="note" x="170" y="322" text-anchor="middle">タグ付け</text>
+  <text class="caption" x="170" y="342" text-anchor="middle">部門/年度/分類 等</text>
+
+  <rect class="box-alt" x="340" y="300" width="300" height="60"/>
+  <text class="note" x="490" y="322" text-anchor="middle">タグ管理</text>
+  <text class="caption" x="490" y="342" text-anchor="middle">追加・編集・削除・検索</text>
+
+  <rect class="box-db" x="720" y="360" width="180" height="60"/>
+  <text class="note" x="810" y="382" text-anchor="middle">タグ保存</text>
+  <text class="caption" x="810" y="402" text-anchor="middle">metadata={"tags":[...]}</text>
+
+  <!-- Model Upload -->
+  <rect class="box" x="60" y="420" width="220" height="60"/>
+  <text class="note" x="170" y="442" text-anchor="middle">モデルアップロード</text>
+  <text class="caption" x="170" y="462" text-anchor="middle">.gguf のみ</text>
+
+  <rect class="box-alt" x="340" y="420" width="300" height="60"/>
+  <text class="note" x="490" y="442" text-anchor="middle">モデル管理</text>
+  <text class="caption" x="490" y="462" text-anchor="middle">ロード/選択/状態表示</text>
+
+  <rect class="box-llm" x="940" y="420" width="220" height="60"/>
+  <text class="note" x="1050" y="442" text-anchor="middle">ggufモデル読み込み</text>
+  <text class="caption" x="1050" y="462" text-anchor="middle">CPU/GPU 推論</text>
+
+  <!-- Query to Answer -->
+  <rect class="box" x="60" y="520" width="220" height="60"/>
+  <text class="note" x="170" y="542" text-anchor="middle">クエリ入力</text>
+  <text class="caption" x="170" y="562" text-anchor="middle">自然文の質問</text>
+
+  <rect class="box-alt" x="340" y="520" width="300" height="60"/>
+  <text class="note" x="490" y="542" text-anchor="middle">検索クエリ生成</text>
+  <text class="caption" x="490" y="562" text-anchor="middle">ベクトル化・タグ条件</text>
+
+  <rect class="box-db" x="720" y="520" width="180" height="60"/>
+  <text class="note" x="810" y="542" text-anchor="middle">類似検索</text>
+  <text class="caption" x="810" y="562" text-anchor="middle">フィルタ: tags 等</text>
+
+  <rect class="box-llm" x="940" y="520" width="220" height="60"/>
+  <text class="note" x="1050" y="542" text-anchor="middle">回答生成</text>
+  <text class="caption" x="1050" y="562" text-anchor="middle">RAG: コンテキスト注入</text>
+
+  <rect class="box-alt" x="340" y="600" width="300" height="60"/>
+  <text class="note" x="490" y="622" text-anchor="middle">要約／ポストプロセス（任意）</text>
+  <text class="caption" x="490" y="642" text-anchor="middle">閾値制御・出典提示</text>
+
+  <rect class="box" x="60" y="680" width="220" height="60"/>
+  <text class="note" x="170" y="702" text-anchor="middle">回答表示・保存</text>
+  <text class="caption" x="170" y="722" text-anchor="middle">チャット履歴・エクスポート</text>
+
+  <!-- Arrows: Document path -->
+  <path class="arrow" d="M170,160 L170,200"/>
+  <path class="arrow" d="M280,230 L340,230"/>
+  <path class="arrow" d="M640,230 L940,230"/>
+  <path class="arrow" d="M1050,260 L1050,280"/>
+  <path class="arrow" d="M940,310 L900,310 L900,310 L900,310"/>
+  <path class="arrow" d="M900,310 L900,310"/> <!-- placeholder to keep structure -->
+
+  <path class="arrow" d="M1050,260 L1050,280 L900,280 L900,310 L900,310"/>
+  <path class="arrow" d="M900,310 L900,310"/>
+
+  <!-- Better explicit arrow to index -->
+  <path class="arrow" d="M1050,260 C1050,270 1040,280 1030,290 L900,290 L900,310 L900,310"/>
+
+  <!-- From parse to index directly (text) -->
+  <path class="arrow dashed" d="M490,260 C490,300 720,300 720,300"/>
+
+  <!-- Tagging arrows -->
+  <path class="arrow" d="M170,360 L170,360 L170,360"/>
+  <path class="arrow" d="M280,330 L340,330"/>
+  <path class="arrow" d="M640,330 L720,390"/>
+
+  <!-- Model arrows -->
+  <path class="arrow" d="M280,450 L340,450"/>
+  <path class="arrow" d="M640,450 L940,450"/>
+
+  <!-- Query to answer arrows -->
+  <path class="arrow" d="M280,550 L340,550"/>
+  <path class="arrow" d="M640,550 L720,550"/>
+  <path class="arrow" d="M900,550 L940,550"/>
+  <path class="arrow" d="M1050,580 L1050,600 L640,600"/>
+  <path class="arrow" d="M340,630 L280,630 L280,710 L280,710"/>
+  <path class="arrow" d="M280,710 L280,710"/>
+  <path class="arrow" d="M280,710 L280,710"/>
+
+  <!-- Offline badge -->
+  <rect x="940" y="120" width="220" height="40" rx="6" ry="6" class="box-llm"/>
+  <text class="note" x="1050" y="145" text-anchor="middle">完全オフライン（外部通信なし）</text>
+
+  <!-- Legend -->
+  <rect class="box" x="20" y="10" width="12" height="12"/><text class="caption" x="40" y="20">ユーザー操作/一般処理</text>
+  <rect class="box-alt" x="220" y="10" width="12" height="12"/><text class="caption" x="240" y="20">アプリ内部処理</text>
+  <rect class="box-db" x="420" y="10" width="12" height="12"/><text class="caption" x="440" y="20">DB/インデックス</text>
+  <rect class="box-llm" x="620" y="10" width="12" height="12"/><text class="caption" x="640" y="20">LLM処理</text>
+</svg>
