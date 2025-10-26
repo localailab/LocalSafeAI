@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # バックエンド（FastAPI）
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: localsafeai-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src/backend:/app
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - CORS_ORIGINS=http://localhost:3000
+    restart: unless-stopped
+    networks:
+      - localsafeai-network
+
+  # フロントエンド（Next.js）
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+    container_name: localsafeai-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - localsafeai-network
+
+networks:
+  localsafeai-network:
+    driver: bridge

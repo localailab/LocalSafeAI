@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+docs/
+README.md
+
+# Node modules
+**/node_modules
+**/.next
+**/out
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/env
+**/venv
+**/.venv
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+**/logs
+**/*.log
+
+# Environment
+**/.env
+**/.env.local
