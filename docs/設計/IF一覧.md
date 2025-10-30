@@ -151,7 +151,46 @@
 **出力**
 
 ```json
-[ { "category_id": 1, "category_name": "科目" } ]
+[
+  { "category_id": 1, "category_name": "科目", "description": "教科関連", "color": "#3b82f6" }
+]
+```
+
+---
+
+### add_category(category_name, description, color)
+
+* カテゴリ追加（管理者のみ）
+  **入力**
+
+```json
+{ "category_name": "カリキュラム", "description": "授業計画・指導案関連", "color": "#3b82f6" }
+```
+
+**出力**
+
+```json
+{ "category_id": 5, "category_name": "カリキュラム", "description": "授業計画・指導案関連", "color": "#3b82f6" }
+```
+
+---
+
+### get_tags(category_id)
+
+* タグ一覧取得（カテゴリIDでフィルタ可能）
+  **入力**
+
+```json
+{ "category_id": 1 }
+```
+
+**出力**
+
+```json
+[
+  { "tag_id": 1, "tag_name": "授業計画", "category_id": 1 },
+  { "tag_id": 2, "tag_name": "アクティブラーニング", "category_id": 1 }
+]
 ```
 
 ---
@@ -173,6 +212,21 @@
 ---
 
 ## 5️⃣ モデル管理
+
+### get_models()
+
+* モデル一覧取得
+  **出力**
+
+```json
+[
+  { "model_id": 1, "model_name": "Llama-3-8B", "file_size_mb": 4800, "description": "高速・軽量モデル" },
+  { "model_id": 2, "model_name": "Llama-3-70B", "file_size_mb": 40000, "description": "高性能モデル" },
+  { "model_id": 3, "model_name": "Mistral-7B", "file_size_mb": 4200, "description": "バランス型モデル" }
+]
+```
+
+---
 
 ### upload_model(file_path, model_name, description)
 

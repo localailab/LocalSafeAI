@@ -59,30 +59,95 @@ class ChatResponse(BaseModel):
     search_results: List[SearchResult]
     processing_time: float
 
+class Permission(BaseModel):
+    resource: str  # 'category', 'tag', 'document', 'model', 'user'
+    actions: List[str]  # ['create', 'read', 'update', 'delete']
+
+class Role(BaseModel):
+    role_id: int
+    role_name: str
+    description: str
+    is_system: bool
+    permissions: List[Permission]
+    created_at: str
+
 # ============================================
 # モックデータ（学校関連）
 # ============================================
 
-MOCK_USERS = {
-    "teacher": {
+MOCK_USERS = [
+    {
         "user_id": 1,
         "username": "teacher",
         "password": "teacher123",  # 本番ではハッシュ化必須
-        "role": "admin"
+        "role": "admin",
+        "created_at": "2024-01-01T00:00:00"
     },
-    "staff": {
+    {
         "user_id": 2,
         "username": "staff",
         "password": "staff123",
-        "role": "user"
+        "role": "user",
+        "created_at": "2024-01-01T00:00:00"
     }
-}
+]
+
+# 権限管理モックデータ
+MOCK_ROLES = [
+    {
+        "role_id": 1,
+        "role_name": "admin",
+        "description": "スーパー管理者（全権限）",
+        "is_system": True,
+        "permissions": [
+            {"resource": "category", "actions": ["create", "read", "update", "delete"]},
+            {"resource": "tag", "actions": ["create", "read", "update", "delete"]},
+            {"resource": "document", "actions": ["create", "read", "update", "delete"]},
+            {"resource": "model", "actions": ["create", "read", "update", "delete"]},
+            {"resource": "user", "actions": ["create", "read", "update", "delete"]},
+            {"resource": "role", "actions": ["create", "read", "update", "delete"]},
+        ],
+        "created_at": "2024-01-01T00:00:00"
+    },
+    {
+        "role_id": 2,
+        "role_name": "user",
+        "description": "一般ユーザー（チャットのみ）",
+        "is_system": True,
+        "permissions": [],
+        "created_at": "2024-01-01T00:00:00"
+    },
+    {
+        "role_id": 3,
+        "role_name": "editor",
+        "description": "編集者（文書・カテゴリ・タグの編集が可能）",
+        "is_system": False,
+        "permissions": [
+            {"resource": "category", "actions": ["read", "update"]},
+            {"resource": "tag", "actions": ["read", "update"]},
+            {"resource": "document", "actions": ["create", "read", "update", "delete"]},
+        ],
+        "created_at": "2024-01-01T00:00:00"
+    },
+    {
+        "role_id": 4,
+        "role_name": "content_manager",
+        "description": "コンテンツマネージャー（文書全権限 + カテゴリ・タグ管理）",
+        "is_system": False,
+        "permissions": [
+            {"resource": "category", "actions": ["create", "read", "update", "delete"]},
+            {"resource": "tag", "actions": ["create", "read", "update", "delete"]},
+            {"resource": "document", "actions": ["create", "read", "update", "delete"]},
+        ],
+        "created_at": "2024-01-01T00:00:00"
+    },
+]
 
 MOCK_CATEGORIES = [
-    {"category_id": 1, "category_name": "カリキュラム", "description": "授業計画・指導案関連"},
-    {"category_id": 2, "category_name": "生徒指導", "description": "生徒指導・教育相談関連"},
-    {"category_id": 3, "category_name": "法律", "description": "教育法規・規則関連"},
-    {"category_id": 4, "category_name": "評価", "description": "学習評価・成績処理関連"},
+    {"category_id": 1, "category_name": "カリキュラム", "description": "授業計画・指導案関連", "color": "#3b82f6"},
+    {"category_id": 2, "category_name": "生徒指導", "description": "生徒指導・教育相談関連", "color": "#10b981"},
+    {"category_id": 3, "category_name": "法律", "description": "教育法規・規則関連", "color": "#f59e0b"},
+    {"category_id": 4, "category_name": "評価", "description": "学習評価・成績処理関連", "color": "#8b5cf6"},
 ]
 
 MOCK_TAGS = [
@@ -103,6 +168,12 @@ MOCK_DOCUMENTS = [
     {"doc_id": 2, "title": "授業計画ガイドライン2024", "category_id": 1, "tag_ids": [1, 2, 3]},
     {"doc_id": 3, "title": "生徒指導の手引き", "category_id": 2, "tag_ids": [4, 5, 6]},
     {"doc_id": 4, "title": "学習評価の方法", "category_id": 4, "tag_ids": [9, 10]},
+]
+
+MOCK_MODELS = [
+    {"model_id": 1, "model_name": "Llama-3-8B", "file_size_mb": 4800, "description": "高速・軽量モデル", "archived": False},
+    {"model_id": 2, "model_name": "Llama-3-70B", "file_size_mb": 40000, "description": "高性能モデル", "archived": False},
+    {"model_id": 3, "model_name": "Mistral-7B", "file_size_mb": 4200, "description": "バランス型モデル", "archived": False},
 ]
 
 MOCK_SEARCH_RESULTS = [
@@ -151,7 +222,7 @@ def root():
 @app.post("/api/auth/login", response_model=LoginResponse)
 def login(request: LoginRequest):
     """ログイン（モックデータ）"""
-    user = MOCK_USERS.get(request.username)
+    user = next((u for u in MOCK_USERS if u["username"] == request.username), None)
 
     if not user or user["password"] != request.password:
         raise HTTPException(status_code=401, detail="認証に失敗しました")
@@ -167,10 +238,10 @@ def login(request: LoginRequest):
 def register(request: RegisterRequest):
     """ユーザー登録（モック）"""
     # 既存ユーザーチェック
-    if request.username in MOCK_USERS:
+    if any(u["username"] == request.username for u in MOCK_USERS):
         raise HTTPException(status_code=400, detail="このユーザー名は既に使用されています")
 
-    new_user_id = len(MOCK_USERS) + 1
+    new_user_id = max([u["user_id"] for u in MOCK_USERS], default=0) + 1
 
     return RegisterResponse(
         user_id=new_user_id,
@@ -189,6 +260,11 @@ def get_tags(category_id: Optional[int] = None):
     if category_id:
         return [tag for tag in MOCK_TAGS if tag["category_id"] == category_id]
     return MOCK_TAGS
+
+@app.get("/api/models")
+def get_models():
+    """モデル一覧取得（チャット用：アーカイブされていないもののみ）"""
+    return [m for m in MOCK_MODELS if not m.get("archived", False)]
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(message: ChatMessage):
@@ -226,6 +302,431 @@ def chat(message: ChatMessage):
         search_results=search_results,
         processing_time=round(processing_time, 2)
     )
+
+@app.post("/api/admin/categories")
+def add_category(category_name: str, description: str = "", color: str = "#6b7280"):
+    """カテゴリ追加（管理者のみ）"""
+    new_id = max([c["category_id"] for c in MOCK_CATEGORIES]) + 1
+    new_category = {
+        "category_id": new_id,
+        "category_name": category_name,
+        "description": description,
+        "color": color
+    }
+    MOCK_CATEGORIES.append(new_category)
+    return new_category
+
+@app.put("/api/admin/categories/{category_id}")
+def update_category(category_id: int, category_name: str, description: str = "", color: str = "#6b7280"):
+    """カテゴリ編集（管理者のみ）"""
+    global MOCK_CATEGORIES
+    for i, category in enumerate(MOCK_CATEGORIES):
+        if category["category_id"] == category_id:
+            MOCK_CATEGORIES[i] = {
+                "category_id": category_id,
+                "category_name": category_name,
+                "description": description,
+                "color": color
+            }
+            return MOCK_CATEGORIES[i]
+    raise HTTPException(status_code=404, detail="カテゴリが見つかりません")
+
+@app.delete("/api/admin/categories/{category_id}")
+def delete_category(category_id: int):
+    """カテゴリ削除（管理者のみ）"""
+    global MOCK_CATEGORIES
+    MOCK_CATEGORIES = [c for c in MOCK_CATEGORIES if c["category_id"] != category_id]
+    return {"status": "deleted", "category_id": category_id}
+
+@app.post("/api/admin/categories/delete-multiple")
+def delete_multiple_categories(category_ids: List[int]):
+    """カテゴリ一斉削除（管理者のみ）"""
+    global MOCK_CATEGORIES
+    MOCK_CATEGORIES = [c for c in MOCK_CATEGORIES if c["category_id"] not in category_ids]
+    return {"status": "deleted", "category_ids": category_ids, "count": len(category_ids)}
+
+@app.post("/api/admin/tags")
+def add_tag(tag_name: str, category_id: int):
+    """タグ追加（管理者のみ）"""
+    new_id = max([t["tag_id"] for t in MOCK_TAGS]) + 1
+    new_tag = {
+        "tag_id": new_id,
+        "tag_name": tag_name,
+        "category_id": category_id
+    }
+    MOCK_TAGS.append(new_tag)
+    return new_tag
+
+@app.put("/api/admin/tags/{tag_id}")
+def update_tag(tag_id: int, tag_name: str, category_id: int):
+    """タグ編集（管理者のみ）"""
+    global MOCK_TAGS
+    for i, tag in enumerate(MOCK_TAGS):
+        if tag["tag_id"] == tag_id:
+            MOCK_TAGS[i] = {
+                "tag_id": tag_id,
+                "tag_name": tag_name,
+                "category_id": category_id
+            }
+            return MOCK_TAGS[i]
+    raise HTTPException(status_code=404, detail="タグが見つかりません")
+
+@app.delete("/api/admin/tags/{tag_id}")
+def delete_tag(tag_id: int):
+    """タグ削除（管理者のみ）"""
+    global MOCK_TAGS
+    MOCK_TAGS = [t for t in MOCK_TAGS if t["tag_id"] != tag_id]
+    return {"status": "deleted", "tag_id": tag_id}
+
+@app.post("/api/admin/tags/delete-multiple")
+def delete_multiple_tags(tag_ids: List[int]):
+    """タグ一斉削除（管理者のみ）"""
+    global MOCK_TAGS
+    MOCK_TAGS = [t for t in MOCK_TAGS if t["tag_id"] not in tag_ids]
+    return {"status": "deleted", "tag_ids": tag_ids, "count": len(tag_ids)}
+
+@app.post("/api/admin/documents")
+def upload_document(file_name: str, category_id: int, tag_ids: list[int] = []):
+    """文書アップロード（管理者のみ）- モック"""
+    new_id = max([d["doc_id"] for d in MOCK_DOCUMENTS]) + 1
+    new_doc = {
+        "doc_id": new_id,
+        "title": file_name,
+        "category_id": category_id,
+        "tag_ids": tag_ids
+    }
+    MOCK_DOCUMENTS.append(new_doc)
+    return {"doc_id": new_id, "file_name": file_name, "status": "uploaded"}
+
+@app.get("/api/admin/documents")
+def get_all_documents():
+    """文書一覧取得（管理者のみ）"""
+    return MOCK_DOCUMENTS
+
+@app.put("/api/admin/documents/{doc_id}")
+def update_document(doc_id: int, title: str, category_id: int, tag_ids: list[int] = []):
+    """文書編集（管理者のみ）"""
+    global MOCK_DOCUMENTS
+    for i, doc in enumerate(MOCK_DOCUMENTS):
+        if doc["doc_id"] == doc_id:
+            MOCK_DOCUMENTS[i] = {
+                "doc_id": doc_id,
+                "title": title,
+                "category_id": category_id,
+                "tag_ids": tag_ids
+            }
+            return MOCK_DOCUMENTS[i]
+    raise HTTPException(status_code=404, detail="文書が見つかりません")
+
+@app.delete("/api/admin/documents/{doc_id}")
+def delete_document(doc_id: int):
+    """文書削除（管理者のみ）"""
+    global MOCK_DOCUMENTS
+    MOCK_DOCUMENTS = [d for d in MOCK_DOCUMENTS if d["doc_id"] != doc_id]
+    return {"status": "deleted", "doc_id": doc_id}
+
+@app.post("/api/admin/documents/delete-multiple")
+def delete_multiple_documents(doc_ids: List[int]):
+    """文書一斉削除（管理者のみ）"""
+    global MOCK_DOCUMENTS
+    MOCK_DOCUMENTS = [d for d in MOCK_DOCUMENTS if d["doc_id"] not in doc_ids]
+    return {"status": "deleted", "doc_ids": doc_ids, "count": len(doc_ids)}
+
+@app.get("/api/admin/models")
+def get_all_models():
+    """全モデル一覧取得（管理者用：アーカイブ含む）"""
+    return MOCK_MODELS
+
+@app.post("/api/admin/models")
+def upload_model(model_name: str, file_size_mb: int):
+    """モデルアップロード（管理者のみ）- モック"""
+    return {
+        "model_id": 1,
+        "model_name": model_name,
+        "file_size_mb": file_size_mb,
+        "status": "uploaded"
+    }
+
+@app.put("/api/admin/models/{model_id}")
+def update_model(model_id: int, model_name: str, file_size_mb: int, description: str = ""):
+    """モデル編集（管理者のみ）"""
+    global MOCK_MODELS
+    for i, model in enumerate(MOCK_MODELS):
+        if model["model_id"] == model_id:
+            MOCK_MODELS[i] = {
+                "model_id": model_id,
+                "model_name": model_name,
+                "file_size_mb": file_size_mb,
+                "description": description,
+                "archived": model.get("archived", False)
+            }
+            return MOCK_MODELS[i]
+    raise HTTPException(status_code=404, detail="モデルが見つかりません")
+
+@app.post("/api/admin/models/{model_id}/archive")
+def archive_model(model_id: int):
+    """モデルをアーカイブ（管理者のみ）"""
+    global MOCK_MODELS
+    for model in MOCK_MODELS:
+        if model["model_id"] == model_id:
+            model["archived"] = True
+            return {"status": "archived", "model_id": model_id, "model": model}
+    raise HTTPException(status_code=404, detail="モデルが見つかりません")
+
+@app.post("/api/admin/models/{model_id}/unarchive")
+def unarchive_model(model_id: int):
+    """モデルのアーカイブを解除（管理者のみ）"""
+    global MOCK_MODELS
+    for model in MOCK_MODELS:
+        if model["model_id"] == model_id:
+            model["archived"] = False
+            return {"status": "unarchived", "model_id": model_id, "model": model}
+    raise HTTPException(status_code=404, detail="モデルが見つかりません")
+
+@app.post("/api/admin/models/archive-multiple")
+def archive_multiple_models(model_ids: List[int]):
+    """モデル一斉アーカイブ（管理者のみ）"""
+    global MOCK_MODELS
+    for model in MOCK_MODELS:
+        if model["model_id"] in model_ids:
+            model["archived"] = True
+    return {"status": "archived", "model_ids": model_ids, "count": len(model_ids)}
+
+@app.delete("/api/admin/models/{model_id}")
+def delete_model(model_id: int):
+    """モデル削除（管理者のみ）"""
+    global MOCK_MODELS
+    MOCK_MODELS = [m for m in MOCK_MODELS if m["model_id"] != model_id]
+    return {"status": "deleted", "model_id": model_id}
+
+@app.post("/api/admin/models/delete-multiple")
+def delete_multiple_models(model_ids: List[int]):
+    """モデル一斉削除（管理者のみ）"""
+    global MOCK_MODELS
+    MOCK_MODELS = [m for m in MOCK_MODELS if m["model_id"] not in model_ids]
+    return {"status": "deleted", "model_ids": model_ids, "count": len(model_ids)}
+
+# ============================================
+# ユーザー管理エンドポイント（管理者のみ）
+# ============================================
+
+@app.get("/api/admin/users")
+def get_users():
+    """ユーザー一覧取得（管理者のみ）"""
+    # パスワードを除外して返す
+    return [
+        {
+            "user_id": u["user_id"],
+            "username": u["username"],
+            "role": u["role"],
+            "created_at": u.get("created_at", "")
+        }
+        for u in MOCK_USERS
+    ]
+
+@app.post("/api/admin/users")
+def add_user(username: str, password: str, role: str = "user"):
+    """ユーザー追加（管理者のみ）"""
+    global MOCK_USERS
+
+    # 既存ユーザーチェック
+    if any(u["username"] == username for u in MOCK_USERS):
+        raise HTTPException(status_code=400, detail="このユーザー名は既に使用されています")
+
+    new_user_id = max([u["user_id"] for u in MOCK_USERS], default=0) + 1
+    new_user = {
+        "user_id": new_user_id,
+        "username": username,
+        "password": password,
+        "role": role,
+        "created_at": datetime.now().isoformat()
+    }
+    MOCK_USERS.append(new_user)
+
+    # パスワードを除外して返す
+    return {
+        "user_id": new_user["user_id"],
+        "username": new_user["username"],
+        "role": new_user["role"],
+        "created_at": new_user["created_at"]
+    }
+
+@app.put("/api/admin/users/{user_id}")
+def update_user(user_id: int, username: str = None, password: str = None, role: str = None):
+    """ユーザー情報更新（管理者のみ）"""
+    global MOCK_USERS
+
+    for i, user in enumerate(MOCK_USERS):
+        if user["user_id"] == user_id:
+            # ユーザー名変更時の重複チェック
+            if username and username != user["username"]:
+                if any(u["username"] == username for u in MOCK_USERS):
+                    raise HTTPException(status_code=400, detail="このユーザー名は既に使用されています")
+                MOCK_USERS[i]["username"] = username
+
+            # パスワード変更
+            if password:
+                MOCK_USERS[i]["password"] = password
+
+            # 権限変更
+            if role:
+                MOCK_USERS[i]["role"] = role
+
+            # パスワードを除外して返す
+            return {
+                "user_id": MOCK_USERS[i]["user_id"],
+                "username": MOCK_USERS[i]["username"],
+                "role": MOCK_USERS[i]["role"],
+                "created_at": MOCK_USERS[i].get("created_at", "")
+            }
+
+    raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+
+@app.delete("/api/admin/users/{user_id}")
+def delete_user(user_id: int):
+    """ユーザー削除（管理者のみ）"""
+    global MOCK_USERS
+
+    # 最後の管理者を削除できないようにする
+    admin_count = sum(1 for u in MOCK_USERS if u["role"] == "admin")
+    user_to_delete = next((u for u in MOCK_USERS if u["user_id"] == user_id), None)
+
+    if user_to_delete and user_to_delete["role"] == "admin" and admin_count <= 1:
+        raise HTTPException(status_code=400, detail="最後の管理者ユーザーは削除できません")
+
+    MOCK_USERS = [u for u in MOCK_USERS if u["user_id"] != user_id]
+    return {"status": "deleted", "user_id": user_id}
+
+@app.post("/api/admin/users/delete-multiple")
+def delete_multiple_users(user_ids: List[int]):
+    """ユーザー一斉削除（管理者のみ）"""
+    global MOCK_USERS
+
+    # 最後の管理者を削除できないようにする
+    remaining_admins = [u for u in MOCK_USERS if u["role"] == "admin" and u["user_id"] not in user_ids]
+    if len(remaining_admins) == 0:
+        raise HTTPException(status_code=400, detail="最後の管理者ユーザーは削除できません")
+
+    MOCK_USERS = [u for u in MOCK_USERS if u["user_id"] not in user_ids]
+    return {"status": "deleted", "user_ids": user_ids, "count": len(user_ids)}
+
+# ============================================
+# 権限管理エンドポイント（管理者のみ）
+# ============================================
+
+@app.get("/api/admin/roles")
+def get_roles():
+    """権限一覧取得（管理者のみ）"""
+    return MOCK_ROLES
+
+@app.get("/api/admin/roles/{role_id}")
+def get_role(role_id: int):
+    """権限詳細取得（管理者のみ）"""
+    role = next((r for r in MOCK_ROLES if r["role_id"] == role_id), None)
+    if not role:
+        raise HTTPException(status_code=404, detail="権限が見つかりません")
+    return role
+
+class RoleCreateRequest(BaseModel):
+    permissions: List[dict]
+
+class RoleUpdateRequest(BaseModel):
+    permissions: Optional[List[dict]] = None
+
+@app.post("/api/admin/roles")
+def add_role(role_name: str, description: str, body: RoleCreateRequest):
+    """カスタム権限追加（管理者のみ）"""
+    global MOCK_ROLES
+
+    # 権限名の重複チェック
+    if any(r["role_name"] == role_name for r in MOCK_ROLES):
+        raise HTTPException(status_code=400, detail="この権限名は既に使用されています")
+
+    new_role_id = max([r["role_id"] for r in MOCK_ROLES], default=0) + 1
+    new_role = {
+        "role_id": new_role_id,
+        "role_name": role_name,
+        "description": description,
+        "is_system": False,
+        "permissions": body.permissions,
+        "created_at": datetime.now().isoformat()
+    }
+    MOCK_ROLES.append(new_role)
+    return new_role
+
+@app.put("/api/admin/roles/{role_id}")
+def update_role(role_id: int, role_name: str = None, description: str = None, body: RoleUpdateRequest = None):
+    """権限更新（管理者のみ）"""
+    global MOCK_ROLES
+
+    for i, role in enumerate(MOCK_ROLES):
+        if role["role_id"] == role_id:
+            # システムロールは編集不可
+            if role["is_system"]:
+                raise HTTPException(status_code=400, detail="システム定義の権限は編集できません")
+
+            # 権限名変更時の重複チェック
+            if role_name and role_name != role["role_name"]:
+                if any(r["role_name"] == role_name for r in MOCK_ROLES):
+                    raise HTTPException(status_code=400, detail="この権限名は既に使用されています")
+                MOCK_ROLES[i]["role_name"] = role_name
+
+            if description is not None:
+                MOCK_ROLES[i]["description"] = description
+
+            if body and body.permissions is not None:
+                MOCK_ROLES[i]["permissions"] = body.permissions
+
+            return MOCK_ROLES[i]
+
+    raise HTTPException(status_code=404, detail="権限が見つかりません")
+
+@app.delete("/api/admin/roles/{role_id}")
+def delete_role(role_id: int):
+    """権限削除（管理者のみ）"""
+    global MOCK_ROLES
+
+    role = next((r for r in MOCK_ROLES if r["role_id"] == role_id), None)
+    if not role:
+        raise HTTPException(status_code=404, detail="権限が見つかりません")
+
+    # システムロールは削除不可
+    if role["is_system"]:
+        raise HTTPException(status_code=400, detail="システム定義の権限は削除できません")
+
+    # この権限を使用しているユーザーがいないかチェック
+    users_with_role = [u for u in MOCK_USERS if u["role"] == role["role_name"]]
+    if users_with_role:
+        raise HTTPException(
+            status_code=400,
+            detail=f"この権限は{len(users_with_role)}人のユーザーに割り当てられているため削除できません"
+        )
+
+    MOCK_ROLES = [r for r in MOCK_ROLES if r["role_id"] != role_id]
+    return {"status": "deleted", "role_id": role_id}
+
+@app.post("/api/admin/roles/delete-multiple")
+def delete_multiple_roles(role_ids: List[int]):
+    """権限一斉削除（管理者のみ）"""
+    global MOCK_ROLES
+
+    # システムロールが含まれていないかチェック
+    system_roles = [r for r in MOCK_ROLES if r["role_id"] in role_ids and r["is_system"]]
+    if system_roles:
+        raise HTTPException(status_code=400, detail="システム定義の権限は削除できません")
+
+    # 使用中の権限が含まれていないかチェック
+    roles_to_delete = [r for r in MOCK_ROLES if r["role_id"] in role_ids]
+    for role in roles_to_delete:
+        users_with_role = [u for u in MOCK_USERS if u["role"] == role["role_name"]]
+        if users_with_role:
+            raise HTTPException(
+                status_code=400,
+                detail=f"権限「{role['role_name']}」は使用中のため削除できません"
+            )
+
+    MOCK_ROLES = [r for r in MOCK_ROLES if r["role_id"] not in role_ids]
+    return {"status": "deleted", "role_ids": role_ids, "count": len(role_ids)}
 
 @app.get("/api/health")
 def health_check():

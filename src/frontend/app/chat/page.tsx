@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { chatAPI, categoryAPI } from '@/lib/api';
-import type { Message, Category, Tag } from '@/types';
+import { chatAPI, categoryAPI, modelAPI } from '@/lib/api';
+import type { Message, Category, Tag, Model, ChatHistory } from '@/types';
 import ReactMarkdown from 'react-markdown';
 
 export default function ChatPage() {
@@ -12,25 +12,107 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState('');
+  const [role, setRole] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // チャット履歴関連
+  const [chatHistories, setChatHistories] = useState<ChatHistory[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   // カテゴリ・タグ関連
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+
+  // モデル関連
+  const [models, setModels] = useState<Model[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<number | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     const storedUsername = localStorage.getItem('username');
+    const storedRole = localStorage.getItem('role');
     if (!token) {
       router.push('/login');
     } else {
       setUsername(storedUsername || 'ゲスト');
+      setRole(storedRole || 'user');
       loadCategories();
+      loadModels();
+      loadChatHistories();
     }
   }, [router]);
+
+  const loadChatHistories = () => {
+    // ローカルストレージから履歴を読み込み
+    const stored = localStorage.getItem('chatHistories');
+    if (stored) {
+      const histories: ChatHistory[] = JSON.parse(stored);
+      setChatHistories(histories);
+      // 最新のチャットを選択
+      if (histories.length > 0) {
+        const latestChat = histories[0];
+        setCurrentChatId(latestChat.chat_id);
+        setMessages(latestChat.messages);
+      }
+    }
+  };
+
+  const saveChatHistories = (histories: ChatHistory[]) => {
+    localStorage.setItem('chatHistories', JSON.stringify(histories));
+    setChatHistories(histories);
+  };
+
+  const createNewChat = () => {
+    const newChatId = `chat-${Date.now()}`;
+    const newChat: ChatHistory = {
+      chat_id: newChatId,
+      title: '新しいチャット',
+      messages: [],
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+    const updatedHistories = [newChat, ...chatHistories];
+    saveChatHistories(updatedHistories);
+    setCurrentChatId(newChatId);
+    setMessages([]);
+  };
+
+  const switchChat = (chatId: string) => {
+    const chat = chatHistories.find(h => h.chat_id === chatId);
+    if (chat) {
+      setCurrentChatId(chatId);
+      setMessages(chat.messages);
+    }
+  };
+
+  const updateCurrentChat = (newMessages: Message[]) => {
+    if (!currentChatId) return;
+
+    const updatedHistories = chatHistories.map(chat => {
+      if (chat.chat_id === currentChatId) {
+        // タイトルを最初のユーザーメッセージから生成
+        let title = chat.title;
+        if (chat.messages.length === 0 && newMessages.length > 0) {
+          const firstUserMsg = newMessages.find(m => m.role === 'user');
+          if (firstUserMsg) {
+            title = firstUserMsg.content.slice(0, 30) + (firstUserMsg.content.length > 30 ? '...' : '');
+          }
+        }
+
+        return {
+          ...chat,
+          title,
+          messages: newMessages,
+          updated_at: new Date(),
+        };
+      }
+      return chat;
+    });
+    saveChatHistories(updatedHistories);
+  };
 
   const loadCategories = async () => {
     try {
@@ -41,25 +123,47 @@ export default function ChatPage() {
     }
   };
 
-  const loadTags = async (categoryId: number) => {
+  const loadModels = async () => {
     try {
-      const data = await categoryAPI.getTags(categoryId);
-      setTags(data);
+      const data = await modelAPI.getModels();
+      setModels(data);
+      // デフォルトで最初のモデルを選択
+      if (data.length > 0) {
+        setSelectedModelId(data[0].model_id);
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error);
+    }
+  };
+
+  const loadTags = async (categoryIds: number[]) => {
+    try {
+      if (categoryIds.length === 0) {
+        setTags([]);
+        return;
+      }
+      // Load tags for all selected categories
+      const allTags = await Promise.all(
+        categoryIds.map(id => categoryAPI.getTags(id))
+      );
+      // Flatten and deduplicate tags
+      const uniqueTags = allTags.flat().filter((tag, index, self) =>
+        index === self.findIndex(t => t.tag_id === tag.tag_id)
+      );
+      setTags(uniqueTags);
     } catch (error) {
       console.error('Failed to load tags:', error);
     }
   };
 
-  const handleCategoryChange = (categoryId: number) => {
-    if (selectedCategoryId === categoryId) {
-      setSelectedCategoryId(null);
-      setTags([]);
-      setSelectedTagIds([]);
-    } else {
-      setSelectedCategoryId(categoryId);
-      setSelectedTagIds([]);
-      loadTags(categoryId);
-    }
+  const handleCategoryToggle = (categoryId: number) => {
+    const newSelectedIds = selectedCategoryIds.includes(categoryId)
+      ? selectedCategoryIds.filter(id => id !== categoryId)
+      : [...selectedCategoryIds, categoryId];
+
+    setSelectedCategoryIds(newSelectedIds);
+    setSelectedTagIds([]);
+    loadTags(newSelectedIds);
   };
 
   const handleTagToggle = (tagId: number) => {
@@ -80,6 +184,14 @@ export default function ChatPage() {
     e.preventDefault();
     if (!input.trim() || loading) return;
 
+    // 現在のチャットがない場合は新規作成
+    if (!currentChatId) {
+      createNewChat();
+      // 少し待ってから送信
+      setTimeout(() => handleSendMessage(e), 100);
+      return;
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -87,7 +199,8 @@ export default function ChatPage() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput('');
     setLoading(true);
 
@@ -95,7 +208,7 @@ export default function ChatPage() {
       const response = await chatAPI.sendMessage({
         query: input,
         use_rag: true,
-        category_ids: selectedCategoryId ? [selectedCategoryId] : [],
+        category_ids: selectedCategoryIds,
         tag_ids: selectedTagIds,
       });
 
@@ -108,7 +221,9 @@ export default function ChatPage() {
         processingTime: response.processing_time,
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      const updatedMessages = [...newMessages, assistantMessage];
+      setMessages(updatedMessages);
+      updateCurrentChat(updatedMessages);
     } catch (error) {
       console.error('Error:', error);
       const errorMessage: Message = {
@@ -117,7 +232,9 @@ export default function ChatPage() {
         content: 'エラーが発生しました。もう一度お試しください。',
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      const updatedMessages = [...newMessages, errorMessage];
+      setMessages(updatedMessages);
+      updateCurrentChat(updatedMessages);
     } finally {
       setLoading(false);
     }
@@ -135,40 +252,187 @@ export default function ChatPage() {
   ];
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      {/* ヘッダー */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-3">
-              <div className="h-10 w-10 bg-gradient-to-br from-primary-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md">
-                <svg
-                  className="h-6 w-6 text-white"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+    <div className="flex h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      {/* 左サイドバー */}
+      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
+        {/* サイドバーヘッダー */}
+        <div className="p-4 border-b border-gray-200">
+          <button
+            onClick={createNewChat}
+            className="w-full px-4 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all shadow-sm hover:shadow-md font-medium flex items-center justify-center space-x-2"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            <span>新しいチャット</span>
+          </button>
+        </div>
+
+        {/* チャット履歴リスト */}
+        <div className="flex-1 overflow-y-auto">
+          {chatHistories.length === 0 ? (
+            <div className="p-4 text-center text-gray-500 text-sm">
+              チャット履歴がありません
+            </div>
+          ) : (
+            <div className="p-2 space-y-1">
+              {chatHistories.map((chat) => (
+                <button
+                  key={chat.chat_id}
+                  onClick={() => switchChat(chat.chat_id)}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg transition-all ${
+                    currentChatId === chat.chat_id
+                      ? 'bg-primary-100 text-primary-900 font-medium'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                  />
-                </svg>
+                  <div className="flex items-start space-x-2">
+                    <svg
+                      className="h-4 w-4 mt-0.5 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                      />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate">{chat.title}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {new Date(chat.updated_at).toLocaleDateString('ja-JP', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* サイドバーフッター */}
+        <div className="p-4 border-t border-gray-200">
+          <div className="text-xs text-gray-600 mb-2">
+            <p className="font-medium">{username}</p>
+            <p>{role === 'admin' ? '管理者' : '一般ユーザー'}</p>
+          </div>
+        </div>
+      </aside>
+
+      {/* メインエリア */}
+      <div className="flex-1 flex flex-col">
+        {/* ヘッダー */}
+        <header className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="px-6">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center space-x-3">
+                <div className="h-10 w-10 bg-gradient-to-br from-primary-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md">
+                  <svg
+                    className="h-6 w-6 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-gray-900">LocalSafeAI</h1>
+                  <p className="text-xs text-gray-500">ローカル文書RAG</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">LocalSafeAI</h1>
-                <p className="text-xs text-gray-500">ローカル文書RAG</p>
-              </div>
+
+              {/* モデル選択 */}
+              {models.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  <svg
+                    className="h-5 w-5 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+                    />
+                  </svg>
+                  <select
+                    value={selectedModelId || ''}
+                    onChange={(e) => setSelectedModelId(Number(e.target.value))}
+                    className="px-3 py-1.5 bg-gradient-to-r from-gray-50 to-gray-100 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-gray-900 text-sm font-medium hover:from-gray-100 hover:to-gray-200 transition-all cursor-pointer"
+                  >
+                    {models.map((model) => (
+                      <option key={model.model_id} value={model.model_id}>
+                        {model.model_name} - {model.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <div className="flex items-center space-x-4">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-gray-900">{username}</p>
-                <p className="text-xs text-gray-500">ログイン中</p>
+                <p className="text-xs text-gray-500">
+                  {role === 'admin' ? '管理者' : '一般ユーザー'}
+                </p>
               </div>
+              {role === 'admin' && (
+                <button
+                  onClick={() => router.push('/admin')}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all shadow-sm"
+                >
+                  <svg
+                    className="h-4 w-4 mr-2"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                  管理画面
+                </button>
+              )}
               <button
                 onClick={handleLogout}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all shadow-md hover:shadow-lg"
+                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all shadow-sm"
               >
                 ログアウト
               </button>
@@ -179,7 +443,7 @@ export default function ChatPage() {
 
       {/* メインコンテンツ */}
       <main className="flex-1 overflow-hidden">
-        <div className="max-w-5xl mx-auto h-full flex flex-col px-4 py-6">
+        <div className="h-full flex flex-col px-6 py-6">
           {/* メッセージエリア */}
           <div className="flex-1 overflow-y-auto space-y-6 mb-6">
             {messages.length === 0 ? (
@@ -277,7 +541,7 @@ export default function ChatPage() {
                           <div
                             className={`rounded-2xl px-5 py-4 shadow-md ${
                               message.role === 'user'
-                                ? 'bg-gradient-to-r from-primary-500 to-purple-600 text-white'
+                                ? 'bg-blue-50 text-blue-900 border border-blue-200'
                                 : 'bg-white text-gray-800 border border-gray-100'
                             }`}
                           >
@@ -401,9 +665,11 @@ export default function ChatPage() {
                   />
                 </svg>
                 <span className="font-medium text-gray-900">検索対象を絞り込む</span>
-                {(selectedCategoryId || selectedTagIds.length > 0) && (
+                {(selectedCategoryIds.length > 0 || selectedTagIds.length > 0) && (
                   <span className="bg-primary-100 text-primary-700 text-xs px-2 py-1 rounded-full">
-                    {selectedTagIds.length > 0 ? `${selectedTagIds.length}件` : '1カテゴリ'}
+                    {selectedCategoryIds.length > 0 && `${selectedCategoryIds.length}カテゴリ`}
+                    {selectedCategoryIds.length > 0 && selectedTagIds.length > 0 && ' · '}
+                    {selectedTagIds.length > 0 && `${selectedTagIds.length}タグ`}
                   </span>
                 )}
               </div>
@@ -429,54 +695,66 @@ export default function ChatPage() {
                 {/* カテゴリ選択 */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    カテゴリ
+                    カテゴリ（複数選択可）
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    {categories.map((category) => (
-                      <button
-                        key={category.category_id}
-                        onClick={() => handleCategoryChange(category.category_id)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                          selectedCategoryId === category.category_id
-                            ? 'bg-primary-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {category.category_name}
-                      </button>
-                    ))}
+                    {categories.map((category) => {
+                      const isSelected = selectedCategoryIds.includes(category.category_id);
+
+                      return (
+                        <button
+                          key={category.category_id}
+                          onClick={() => handleCategoryToggle(category.category_id)}
+                          className="px-4 py-2 rounded-lg text-sm font-medium transition-all border-2"
+                          style={
+                            isSelected
+                              ? { backgroundColor: category.color, borderColor: category.color, color: 'white' }
+                              : { backgroundColor: `${category.color}15`, borderColor: `${category.color}40`, color: category.color }
+                          }
+                        >
+                          {category.category_name}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* タグ選択 */}
-                {selectedCategoryId && tags.length > 0 && (
+                {selectedCategoryIds.length > 0 && tags.length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       タグ（複数選択可）
                     </label>
                     <div className="flex flex-wrap gap-2">
-                      {tags.map((tag) => (
-                        <button
-                          key={tag.tag_id}
-                          onClick={() => handleTagToggle(tag.tag_id)}
-                          className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
-                            selectedTagIds.includes(tag.tag_id)
-                              ? 'bg-purple-600 text-white shadow-md'
-                              : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                          }`}
-                        >
-                          {tag.tag_name}
-                        </button>
-                      ))}
+                      {tags.map((tag) => {
+                        const tagCategory = categories.find(c => c.category_id === tag.category_id);
+                        const tagColor = tagCategory?.color || '#8b5cf6';
+                        const isSelected = selectedTagIds.includes(tag.tag_id);
+
+                        return (
+                          <button
+                            key={tag.tag_id}
+                            onClick={() => handleTagToggle(tag.tag_id)}
+                            className="px-3 py-1.5 rounded-lg text-sm transition-all border-2"
+                            style={
+                              isSelected
+                                ? { backgroundColor: tagColor, borderColor: tagColor, color: 'white' }
+                                : { backgroundColor: `${tagColor}15`, borderColor: `${tagColor}40`, color: tagColor }
+                            }
+                          >
+                            {tag.tag_name}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
                 {/* クリアボタン */}
-                {(selectedCategoryId || selectedTagIds.length > 0) && (
+                {(selectedCategoryIds.length > 0 || selectedTagIds.length > 0) && (
                   <button
                     onClick={() => {
-                      setSelectedCategoryId(null);
+                      setSelectedCategoryIds([]);
                       setSelectedTagIds([]);
                       setTags([]);
                     }}
@@ -503,7 +781,7 @@ export default function ChatPage() {
               <button
                 type="submit"
                 disabled={loading || !input.trim()}
-                className="px-6 py-3 bg-gradient-to-r from-primary-600 to-purple-600 text-white rounded-xl hover:from-primary-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg font-medium"
+                className="px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md font-medium"
               >
                 {loading ? (
                   <svg
@@ -546,6 +824,7 @@ export default function ChatPage() {
           </div>
         </div>
       </main>
+      </div>
     </div>
   );
 }
